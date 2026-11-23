@@ -1,0 +1,329 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net: Deny all access by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Primitive Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidParticipantPair(listVal, uidA, uidB) {
+      return listVal is list &&
+             listVal.size() == 2 &&
+             listVal[0] is string && listVal[0].size() >= 1 && listVal[0].size() <= 128 &&
+             listVal[1] is string && listVal[1].size() >= 1 && listVal[1].size() <= 128 &&
+             uidA in listVal &&
+             uidB in listVal;
+    }
+
+    // --- Entity Validation Helpers (Anti-Update-Gap Blueprints) ---
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 200 &&
+             data.preferredLanguage in ['bn', 'en'] &&
+             (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 500)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidDevice(data) {
+      return data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 &&
+             data.deviceName is string && data.deviceName.size() >= 1 && data.deviceName.size() <= 100 &&
+             data.ownerName is string && data.ownerName.size() >= 1 && data.ownerName.size() <= 100 &&
+             data.online is bool &&
+             data.sharingActive is bool &&
+             data.platformVersion is string && data.platformVersion.size() >= 1 && data.platformVersion.size() <= 40 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidPairingRequest(data) {
+      return data.requesterUid is string && data.requesterUid.size() >= 1 && data.requesterUid.size() <= 128 &&
+             data.requesterDeviceCode is string && data.requesterDeviceCode.size() >= 4 && data.requesterDeviceCode.size() <= 32 &&
+             data.requesterDeviceName is string && data.requesterDeviceName.size() >= 1 && data.requesterDeviceName.size() <= 100 &&
+             data.requesterName is string && data.requesterName.size() >= 1 && data.requesterName.size() <= 100 &&
+             data.targetOwnerUid is string && data.targetOwnerUid.size() >= 1 && data.targetOwnerUid.size() <= 128 &&
+             data.targetDeviceCode is string && data.targetDeviceCode.size() >= 4 && data.targetDeviceCode.size() <= 32 &&
+             data.targetDeviceName is string && data.targetDeviceName.size() >= 1 && data.targetDeviceName.size() <= 100 &&
+             data.targetOwnerName is string && data.targetOwnerName.size() >= 1 && data.targetOwnerName.size() <= 100 &&
+             data.requesterDeviceCode != data.targetDeviceCode &&
+             isValidParticipantPair(data.participantUids, data.requesterUid, data.targetOwnerUid) &&
+             data.status in ['PENDING', 'ACCEPTED', 'REJECTED', 'REVOKED'] &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidChatMessage(data) {
+      return data.pairingId is string && data.pairingId.size() >= 1 && data.pairingId.size() <= 128 &&
+             data.participantUids is list && data.participantUids.size() == 2 &&
+             data.participantUids[0] is string && data.participantUids[0].size() >= 1 && data.participantUids[0].size() <= 128 &&
+             data.participantUids[1] is string && data.participantUids[1].size() >= 1 && data.participantUids[1].size() <= 128 &&
+             data.senderUid is string && data.senderUid.size() >= 1 && data.senderUid.size() <= 128 &&
+             data.senderName is string && data.senderName.size() >= 1 && data.senderName.size() <= 100 &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 1000 &&
+             data.messageType in ['TEXT', 'SESSION_EVENT'] &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidSession(data) {
+      return data.pairingId is string && data.pairingId.size() >= 1 && data.pairingId.size() <= 128 &&
+             data.hostUid is string && data.hostUid.size() >= 1 && data.hostUid.size() <= 128 &&
+             data.hostDeviceCode is string && data.hostDeviceCode.size() >= 4 && data.hostDeviceCode.size() <= 32 &&
+             data.hostDeviceName is string && data.hostDeviceName.size() >= 1 && data.hostDeviceName.size() <= 100 &&
+             data.viewerUid is string && data.viewerUid.size() >= 1 && data.viewerUid.size() <= 128 &&
+             data.viewerDeviceCode is string && data.viewerDeviceCode.size() >= 4 && data.viewerDeviceCode.size() <= 32 &&
+             data.viewerDeviceName is string && data.viewerDeviceName.size() >= 1 && data.viewerDeviceName.size() <= 100 &&
+             data.hostDeviceCode != data.viewerDeviceCode &&
+             isValidParticipantPair(data.participantUids, data.hostUid, data.viewerUid) &&
+             data.status in ['REQUESTED', 'APPROVED', 'ACTIVE', 'REJECTED', 'ENDED', 'EXPIRED'] &&
+             data.screenWidth is int && data.screenWidth >= 0 && data.screenWidth <= 4320 &&
+             data.screenHeight is int && data.screenHeight >= 0 && data.screenHeight <= 4320 &&
+             data.qualityProfile in ['AUTO', 'HIGH', 'BALANCED', 'LOW'] &&
+             (!('offerSdp' in data) || (data.offerSdp is string && data.offerSdp.size() <= 24000)) &&
+             (!('answerSdp' in data) || (data.answerSdp is string && data.answerSdp.size() <= 24000)) &&
+             data.expiresAt is timestamp &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidIceCandidate(data) {
+      return data.sessionId is string && data.sessionId.size() >= 1 && data.sessionId.size() <= 128 &&
+             data.participantUids is list && data.participantUids.size() == 2 &&
+             data.participantUids[0] is string && data.participantUids[0].size() >= 1 && data.participantUids[0].size() <= 128 &&
+             data.participantUids[1] is string && data.participantUids[1].size() >= 1 && data.participantUids[1].size() <= 128 &&
+             data.senderUid is string && data.senderUid.size() >= 1 && data.senderUid.size() <= 128 &&
+             data.role in ['HOST', 'VIEWER'] &&
+             data.sdpMid is string && data.sdpMid.size() <= 128 &&
+             data.sdpMLineIndex is int && data.sdpMLineIndex >= 0 && data.sdpMLineIndex <= 32 &&
+             data.sdp is string && data.sdp.size() >= 1 && data.sdp.size() <= 2000 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    // --- Collection 1: Private User Profiles (PII Isolated) ---
+    match /users/{userId} {
+      allow get: if isValidId(userId) && isOwner(userId);
+      allow list: if false;
+
+      allow create: if isValidId(userId) &&
+                       isOwner(userId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'email', 'preferredLanguage', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'displayName', 'email', 'photoUrl', 'preferredLanguage', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isValidId(userId) &&
+                       isOwner(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoUrl', 'preferredLanguage', 'updatedAt']);
+
+      allow delete: if isValidId(userId) && isOwner(userId);
+    }
+
+    // --- Collection 2: Device Registry (No PII; Exact Code Lookup + Owner Management) ---
+    match /devices/{deviceCode} {
+      allow get: if isSignedIn() && isValidId(deviceCode);
+      allow list: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
+
+      allow create: if isSignedIn() &&
+                       isValidId(deviceCode) &&
+                       incoming().ownerUid == request.auth.uid &&
+                       incoming().keys().hasAll(['ownerUid', 'deviceName', 'ownerName', 'online', 'sharingActive', 'platformVersion', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['ownerUid', 'deviceName', 'ownerName', 'online', 'sharingActive', 'platformVersion', 'createdAt', 'updatedAt']) &&
+                       isValidDevice(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(deviceCode) &&
+                       isValidDevice(incoming()) &&
+                       existing().ownerUid == request.auth.uid &&
+                       incoming().ownerUid == existing().ownerUid &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['deviceName', 'ownerName', 'online', 'sharingActive', 'platformVersion', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(deviceCode) && existing().ownerUid == request.auth.uid;
+    }
+
+    // --- Collection 3: Consent-Based Pairing Requests & Connection History ---
+    match /pairingRequests/{requestId} {
+      allow get: if isSignedIn() && isValidId(requestId) && request.auth.uid in existing().participantUids;
+      allow list: if isSignedIn() && request.auth.uid in resource.data.participantUids;
+
+      allow create: if isSignedIn() &&
+                       isValidId(requestId) &&
+                       incoming().keys().hasAll(['requesterUid', 'requesterDeviceCode', 'requesterDeviceName', 'requesterName', 'targetOwnerUid', 'targetDeviceCode', 'targetDeviceName', 'targetOwnerName', 'participantUids', 'status', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['requesterUid', 'requesterDeviceCode', 'requesterDeviceName', 'requesterName', 'targetOwnerUid', 'targetDeviceCode', 'targetDeviceName', 'targetOwnerName', 'participantUids', 'status', 'createdAt', 'updatedAt']) &&
+                       isValidPairingRequest(incoming()) &&
+                       incoming().requesterUid == request.auth.uid &&
+                       incoming().status == 'PENDING' &&
+                       exists(/databases/$(database)/documents/devices/$(incoming().targetDeviceCode)) &&
+                       get(/databases/$(database)/documents/devices/$(incoming().targetDeviceCode)).data.ownerUid == incoming().targetOwnerUid;
+
+      allow update: if isSignedIn() &&
+                       isValidId(requestId) &&
+                       isValidPairingRequest(incoming()) &&
+                       incoming().requesterUid == existing().requesterUid &&
+                       incoming().requesterDeviceCode == existing().requesterDeviceCode &&
+                       incoming().requesterDeviceName == existing().requesterDeviceName &&
+                       incoming().requesterName == existing().requesterName &&
+                       incoming().targetOwnerUid == existing().targetOwnerUid &&
+                       incoming().targetDeviceCode == existing().targetDeviceCode &&
+                       incoming().targetDeviceName == existing().targetDeviceName &&
+                       incoming().targetOwnerName == existing().targetOwnerName &&
+                       incoming().participantUids == existing().participantUids &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         // Action 1: Target device owner explicitly accepts or rejects a pending request
+                         (
+                           existing().status == 'PENDING' &&
+                           request.auth.uid == existing().targetOwnerUid &&
+                           incoming().status in ['ACCEPTED', 'REJECTED'] &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+                         ) ||
+                         // Action 2: Either participant revokes an active pairing or cancels a pending request
+                         (
+                           existing().status in ['PENDING', 'ACCEPTED'] &&
+                           request.auth.uid in existing().participantUids &&
+                           incoming().status == 'REVOKED' &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+                         )
+                       );
+
+      allow delete: if isSignedIn() && isValidId(requestId) && request.auth.uid in existing().participantUids;
+
+      // --- Subcollection: Paired Chat & Session Notifications ---
+      match /messages/{messageId} {
+        allow get: if isSignedIn() && isValidId(requestId) && isValidId(messageId) && request.auth.uid in existing().participantUids;
+        allow list: if isSignedIn() && request.auth.uid in resource.data.participantUids;
+
+        allow create: if isSignedIn() &&
+                         isValidId(requestId) &&
+                         isValidId(messageId) &&
+                         incoming().keys().hasAll(['pairingId', 'participantUids', 'senderUid', 'senderName', 'text', 'messageType', 'createdAt']) &&
+                         incoming().keys().hasOnly(['pairingId', 'participantUids', 'senderUid', 'senderName', 'text', 'messageType', 'createdAt']) &&
+                         isValidChatMessage(incoming()) &&
+                         incoming().pairingId == requestId &&
+                         incoming().senderUid == request.auth.uid &&
+                         request.auth.uid in incoming().participantUids &&
+                         exists(/databases/$(database)/documents/pairingRequests/$(requestId)) &&
+                         get(/databases/$(database)/documents/pairingRequests/$(requestId)).data.status == 'ACCEPTED' &&
+                         request.auth.uid in get(/databases/$(database)/documents/pairingRequests/$(requestId)).data.participantUids;
+
+        allow update, delete: if false;
+      }
+    }
+
+    // --- Collection 4: Consent-Gated Live Screen Sharing Sessions & WebRTC Signaling ---
+    match /sessions/{sessionId} {
+      allow get: if isSignedIn() && isValidId(sessionId) && request.auth.uid in existing().participantUids;
+      allow list: if isSignedIn() && request.auth.uid in resource.data.participantUids;
+
+      allow create: if isSignedIn() &&
+                       isValidId(sessionId) &&
+                       incoming().keys().hasAll(['pairingId', 'hostUid', 'hostDeviceCode', 'hostDeviceName', 'viewerUid', 'viewerDeviceCode', 'viewerDeviceName', 'participantUids', 'status', 'screenWidth', 'screenHeight', 'qualityProfile', 'expiresAt', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['pairingId', 'hostUid', 'hostDeviceCode', 'hostDeviceName', 'viewerUid', 'viewerDeviceCode', 'viewerDeviceName', 'participantUids', 'status', 'offerSdp', 'answerSdp', 'screenWidth', 'screenHeight', 'qualityProfile', 'expiresAt', 'createdAt', 'updatedAt']) &&
+                       isValidSession(incoming()) &&
+                       (
+                         (incoming().viewerUid == request.auth.uid && incoming().status == 'REQUESTED' && !('offerSdp' in incoming()) && !('answerSdp' in incoming())) ||
+                         (incoming().hostUid == request.auth.uid && incoming().status == 'APPROVED' && !('answerSdp' in incoming()))
+                       ) &&
+                       exists(/databases/$(database)/documents/pairingRequests/$(incoming().pairingId)) &&
+                       get(/databases/$(database)/documents/pairingRequests/$(incoming().pairingId)).data.status == 'ACCEPTED' &&
+                       request.auth.uid in get(/databases/$(database)/documents/pairingRequests/$(incoming().pairingId)).data.participantUids;
+
+      allow update: if isSignedIn() &&
+                       isValidId(sessionId) &&
+                       isValidSession(incoming()) &&
+                       existing().status in ['REQUESTED', 'APPROVED', 'ACTIVE'] &&
+                       incoming().pairingId == existing().pairingId &&
+                       incoming().hostUid == existing().hostUid &&
+                       incoming().hostDeviceCode == existing().hostDeviceCode &&
+                       incoming().hostDeviceName == existing().hostDeviceName &&
+                       incoming().viewerUid == existing().viewerUid &&
+                       incoming().viewerDeviceCode == existing().viewerDeviceCode &&
+                       incoming().viewerDeviceName == existing().viewerDeviceName &&
+                       incoming().participantUids == existing().participantUids &&
+                       incoming().expiresAt == existing().expiresAt &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         // Action 1: Host explicitly approves or rejects viewer request
+                         (
+                           existing().status == 'REQUESTED' &&
+                           request.auth.uid == existing().hostUid &&
+                           incoming().status in ['APPROVED', 'REJECTED'] &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+                         ) ||
+                         // Action 2: Host publishes WebRTC SDP offer and active stream dimensions
+                         (
+                           existing().status in ['APPROVED', 'ACTIVE'] &&
+                           request.auth.uid == existing().hostUid &&
+                           incoming().status in ['APPROVED', 'ACTIVE'] &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['offerSdp', 'screenWidth', 'screenHeight', 'qualityProfile', 'status', 'updatedAt'])
+                         ) ||
+                         // Action 3: Viewer publishes WebRTC SDP answer or requests quality profile change
+                         (
+                           existing().status in ['APPROVED', 'ACTIVE'] &&
+                           request.auth.uid == existing().viewerUid &&
+                           incoming().status in ['APPROVED', 'ACTIVE'] &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['answerSdp', 'qualityProfile', 'status', 'updatedAt'])
+                         ) ||
+                         // Action 4: Immediate disconnect / expiration by either participant
+                         (
+                           request.auth.uid in existing().participantUids &&
+                           incoming().status in ['ENDED', 'EXPIRED'] &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+                         )
+                       );
+
+      allow delete: if isSignedIn() &&
+                       isValidId(sessionId) &&
+                       request.auth.uid in existing().participantUids &&
+                       existing().status in ['REJECTED', 'ENDED', 'EXPIRED'];
+
+      // --- Subcollection: Trickle ICE Candidates ---
+      match /iceCandidates/{candidateId} {
+        allow get: if isSignedIn() && isValidId(sessionId) && isValidId(candidateId) && request.auth.uid in existing().participantUids;
+        allow list: if isSignedIn() && request.auth.uid in resource.data.participantUids;
+
+        allow create: if isSignedIn() &&
+                         isValidId(sessionId) &&
+                         isValidId(candidateId) &&
+                         incoming().keys().hasAll(['sessionId', 'participantUids', 'senderUid', 'role', 'sdpMid', 'sdpMLineIndex', 'sdp', 'createdAt']) &&
+                         incoming().keys().hasOnly(['sessionId', 'participantUids', 'senderUid', 'role', 'sdpMid', 'sdpMLineIndex', 'sdp', 'createdAt']) &&
+                         isValidIceCandidate(incoming()) &&
+                         incoming().sessionId == sessionId &&
+                         incoming().senderUid == request.auth.uid &&
+                         request.auth.uid in incoming().participantUids &&
+                         exists(/databases/$(database)/documents/sessions/$(sessionId)) &&
+                         request.auth.uid in get(/databases/$(database)/documents/sessions/$(sessionId)).data.participantUids &&
+                         get(/databases/$(database)/documents/sessions/$(sessionId)).data.status in ['APPROVED', 'ACTIVE'];
+
+        allow update, delete: if false;
+      }
+    }
+  }
+}

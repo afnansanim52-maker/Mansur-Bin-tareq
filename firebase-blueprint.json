@@ -1,0 +1,137 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Private user profile containing authenticated account metadata and language preferences.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID of the owner." },
+        "displayName": { "type": "string", "description": "User display name." },
+        "email": { "type": "string", "description": "Private email address (restricted to owner only)." },
+        "photoUrl": { "type": "string", "description": "Optional avatar URL." },
+        "preferredLanguage": { "type": "string", "enum": ["bn", "en"], "description": "Preferred UI language." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp of profile creation (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp of last update (FieldValue.serverTimestamp())." }
+      },
+      "required": ["userId", "displayName", "email", "preferredLanguage", "createdAt", "updatedAt"]
+    },
+    "DeviceRegistration": {
+      "title": "DeviceRegistration",
+      "description": "Publicly addressable by exact unique device code (no PII) for consent-based pairing discovery.",
+      "type": "object",
+      "properties": {
+        "ownerUid": { "type": "string", "description": "UID of the device owner." },
+        "deviceName": { "type": "string", "description": "Human-readable Android device model name." },
+        "ownerName": { "type": "string", "description": "Public display name of the device owner." },
+        "online": { "type": "boolean", "description": "Live online status indicator." },
+        "sharingActive": { "type": "boolean", "description": "Whether the device is currently sharing its screen." },
+        "platformVersion": { "type": "string", "description": "Android OS version label." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["ownerUid", "deviceName", "ownerName", "online", "sharingActive", "platformVersion", "createdAt", "updatedAt"]
+    },
+    "PairingRequest": {
+      "title": "PairingRequest",
+      "description": "Explicit consent-based pairing relationship and connection history between two devices.",
+      "type": "object",
+      "properties": {
+        "requesterUid": { "type": "string", "description": "UID of the user requesting connection." },
+        "requesterDeviceCode": { "type": "string", "description": "Unique code of the requesting device." },
+        "requesterDeviceName": { "type": "string", "description": "Model name of the requesting device." },
+        "requesterName": { "type": "string", "description": "Display name of the requesting user." },
+        "targetOwnerUid": { "type": "string", "description": "UID of the target device owner." },
+        "targetDeviceCode": { "type": "string", "description": "Unique code of the target device." },
+        "targetDeviceName": { "type": "string", "description": "Model name of the target device." },
+        "targetOwnerName": { "type": "string", "description": "Display name of the target device owner." },
+        "participantUids": { "type": "array", "description": "2-element array containing [requesterUid, targetOwnerUid] for participant-scoped queries." },
+        "status": { "type": "string", "enum": ["PENDING", "ACCEPTED", "REJECTED", "REVOKED"], "description": "Pairing lifecycle state." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["requesterUid", "requesterDeviceCode", "requesterDeviceName", "requesterName", "targetOwnerUid", "targetDeviceCode", "targetDeviceName", "targetOwnerName", "participantUids", "status", "createdAt", "updatedAt"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "Real-time text message or screen-sharing session notification inside an accepted pairing.",
+      "type": "object",
+      "properties": {
+        "pairingId": { "type": "string", "description": "Parent pairing request document ID." },
+        "participantUids": { "type": "array", "description": "Denormalized 2-element array of participant UIDs." },
+        "senderUid": { "type": "string", "description": "UID of the message sender." },
+        "senderName": { "type": "string", "description": "Display name of the message sender." },
+        "text": { "type": "string", "description": "Message body." },
+        "messageType": { "type": "string", "enum": ["TEXT", "SESSION_EVENT"], "description": "User text or session start/end notification." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["pairingId", "participantUids", "senderUid", "senderName", "text", "messageType", "createdAt"]
+    },
+    "ScreenShareSession": {
+      "title": "ScreenShareSession",
+      "description": "Consent-gated WebRTC screen sharing session with SDP signaling and expiration.",
+      "type": "object",
+      "properties": {
+        "pairingId": { "type": "string", "description": "Accepted pairing document ID authorizing this session." },
+        "hostUid": { "type": "string", "description": "UID of Device A sharing the screen." },
+        "hostDeviceCode": { "type": "string", "description": "Unique code of Device A." },
+        "hostDeviceName": { "type": "string", "description": "Model name of Device A." },
+        "viewerUid": { "type": "string", "description": "UID of Device B viewing the screen." },
+        "viewerDeviceCode": { "type": "string", "description": "Unique code of Device B." },
+        "viewerDeviceName": { "type": "string", "description": "Model name of Device B." },
+        "participantUids": { "type": "array", "description": "2-element array containing [hostUid, viewerUid]." },
+        "status": { "type": "string", "enum": ["REQUESTED", "APPROVED", "ACTIVE", "REJECTED", "ENDED", "EXPIRED"], "description": "Session lifecycle status." },
+        "offerSdp": { "type": "string", "description": "Optional WebRTC SDP offer published by Host after consent." },
+        "answerSdp": { "type": "string", "description": "Optional WebRTC SDP answer published by Viewer." },
+        "screenWidth": { "type": "integer", "description": "Active stream width in pixels." },
+        "screenHeight": { "type": "integer", "description": "Active stream height in pixels." },
+        "qualityProfile": { "type": "string", "enum": ["AUTO", "HIGH", "BALANCED", "LOW"], "description": "Adaptive video quality profile." },
+        "expiresAt": { "type": "string", "format": "date-time", "description": "Mandatory session expiration timestamp." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["pairingId", "hostUid", "hostDeviceCode", "hostDeviceName", "viewerUid", "viewerDeviceCode", "viewerDeviceName", "participantUids", "status", "screenWidth", "screenHeight", "qualityProfile", "expiresAt", "createdAt", "updatedAt"]
+    },
+    "IceCandidateRecord": {
+      "title": "IceCandidateRecord",
+      "description": "WebRTC trickle ICE candidate exchanged between Host and Viewer.",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string", "description": "Parent session document ID." },
+        "participantUids": { "type": "array", "description": "Denormalized 2-element array of session participant UIDs." },
+        "senderUid": { "type": "string", "description": "UID of the sender." },
+        "role": { "type": "string", "enum": ["HOST", "VIEWER"], "description": "Peer role generating the ICE candidate." },
+        "sdpMid": { "type": "string", "description": "SDP media ID." },
+        "sdpMLineIndex": { "type": "integer", "description": "SDP m-line index." },
+        "sdp": { "type": "string", "description": "ICE candidate SDP string." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp())." }
+      },
+      "required": ["sessionId", "participantUids", "senderUid", "role", "sdpMid", "sdpMLineIndex", "sdp", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Private user account profile isolated strictly to the authenticated owner."
+    },
+    "/devices/{deviceCode}": {
+      "schema": { "$ref": "#/entities/DeviceRegistration" },
+      "description": "Device registry keyed by unique device pairing code (no PII)."
+    },
+    "/pairingRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/PairingRequest" },
+      "description": "Consent-based pairing requests, paired devices, and connection history."
+    },
+    "/pairingRequests/{requestId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/ChatMessage" },
+      "description": "Paired user text messages and session lifecycle notifications."
+    },
+    "/sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/ScreenShareSession" },
+      "description": "Consent-gated live WebRTC screen sharing sessions and SDP signaling."
+    },
+    "/sessions/{sessionId}/iceCandidates/{candidateId}": {
+      "schema": { "$ref": "#/entities/IceCandidateRecord" },
+      "description": "Trickle ICE candidates for active WebRTC screen sharing sessions."
+    }
+  }
+}

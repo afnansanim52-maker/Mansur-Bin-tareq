@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VitRemote</string>
+    <string name="notification_channel_sharing_name">স্ক্রিন শেয়ারিং / Screen Sharing</string>
+    <string name="notification_channel_sharing_desc">লাইভ স্ক্রিন শেয়ারিং চলাকালীন স্থায়ী নিরাপত্তা নোটিফিকেশন</string>
+    <string name="notification_channel_alerts_name">কানেকশন অ্যালার্ট / Connection Alerts</string>
+    <string name="notification_channel_alerts_desc">নতুন পেয়ারিং রিকোয়েস্ট ও সেশন স্ট্যাটাস আপডেট</string>
+    <string name="notification_sharing_title">VitRemote স্ক্রিন শেয়ারিং চালু আছে</string>
+    <string name="notification_sharing_body">আপনার স্ক্রিন অনুমোদিত ডিভাইসে লাইভ দেখা যাচ্ছে। যেকোনো সময় বন্ধ করতে ট্যাপ করুন।</string>
+    <string name="notification_action_stop">শেয়ারিং বন্ধ করুন</string>
+</resources>
